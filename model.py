@@ -1,5 +1,8 @@
 import torch
 from torch import nn
+import numpy as np
+
+from utils import device
 
 class NTM(nn.Module):
     def __init__(self, ctrl_type, input_size=9, hidden_size=100, num_layers=1,
@@ -18,9 +21,9 @@ class NTM(nn.Module):
                             "Please choose between 'lstm' and 'ffnn'." % ctrl_type)
 
         # creating controller, read head and write head
-        self.controller = controller(ctrl_type, input_size + mem_loc_len, hidden_size, batch_size=batch_size)
-        self.write_head = head(hidden_size, n_mem_loc, mem_loc_len, batch_size=batch_size)
-        self.read_head = head(hidden_size, n_mem_loc, mem_loc_len, batch_size=batch_size)
+        self.controller = Controller(ctrl_type, input_size + mem_loc_len, hidden_size, batch_size=batch_size)
+        self.write_head = Head(hidden_size, n_mem_loc, mem_loc_len, batch_size=batch_size)
+        self.read_head = Head(hidden_size, n_mem_loc, mem_loc_len, batch_size=batch_size)
 
         self.fc_erase = nn.Linear(hidden_size, mem_loc_len)
         self.fc_add = nn.Linear(hidden_size, mem_loc_len)
@@ -37,14 +40,14 @@ class NTM(nn.Module):
 
     def init_parameters(self):
         # Initialize the linear layers
-        nn.init.xavier_uniform(self.fc_erase.weight)
-        nn.init.constant(self.fc_erase.bias, 0)
+        nn.init.xavier_uniform_(self.fc_erase.weight)
+        nn.init.constant_(self.fc_erase.bias, 0)
 
-        nn.init.xavier_uniform(self.fc_add.weight)
-        nn.init.normal(self.fc_add.bias, 0)
+        nn.init.xavier_uniform_(self.fc_add.weight)
+        nn.init.normal_(self.fc_add.bias, 0)
 
-        nn.init.xavier_uniform(self.fc_out.weight)
-        nn.init.constant(self.fc_out.bias, 0)
+        nn.init.xavier_uniform_(self.fc_out.weight)
+        nn.init.constant_(self.fc_out.bias, 0)
 
     def forward(self, x):
 
@@ -167,9 +170,9 @@ class NTM(nn.Module):
 # The output of its forward() method is a normalized new weight
 #
 ##################################################################################################
-class head(nn.Module):
+class Head(nn.Module):
     def __init__(self, hidden_size, weight_size, key_size, shift_range=1, batch_size=1):
-        super(head, self).__init__()
+        super(Head, self).__init__()
 
         self.hidden_size = hidden_size
         self.weight_size = weight_size
@@ -187,20 +190,20 @@ class head(nn.Module):
 
     def init_parameters(self):
         # Initialize the linear layers
-        nn.init.xavier_normal(self.fc_key.weight)
-        nn.init.constant(self.fc_key.bias, 0)
+        nn.init.xavier_normal_(self.fc_key.weight)
+        nn.init.constant_(self.fc_key.bias, 0)
 
-        nn.init.xavier_uniform(self.fc_beta.weight)
-        nn.init.constant(self.fc_beta.bias, 0)
+        nn.init.xavier_uniform_(self.fc_beta.weight)
+        nn.init.constant_(self.fc_beta.bias, 0)
 
-        nn.init.xavier_uniform(self.fc_blending.weight)
-        nn.init.constant(self.fc_blending.bias, 0)
+        nn.init.xavier_uniform_(self.fc_blending.weight)
+        nn.init.constant_(self.fc_blending.bias, 0)
 
-        nn.init.xavier_uniform(self.fc_shift.weight)
-        nn.init.constant(self.fc_shift.bias, 0)
+        nn.init.xavier_uniform_(self.fc_shift.weight)
+        nn.init.constant_(self.fc_shift.bias, 0)
 
-        nn.init.xavier_normal(self.fc_gamma.weight)
-        nn.init.constant(self.fc_gamma.bias, 0)
+        nn.init.xavier_normal_(self.fc_gamma.weight)
+        nn.init.constant_(self.fc_gamma.bias, 0)
 
     def forward(self, x, memory, prev_weight):
         self.memory = memory
@@ -244,10 +247,10 @@ class head(nn.Module):
 # The controller uses an LSTM or an MLP
 #
 #################################################################################################################
-class controller(nn.Module):
+class Controller(nn.Module):
     def __init__(self, ctrl_type, input_size, hidden_size, batch_size=1,
                  num_layers=1):
-        super(controller, self).__init__()
+        super(Controller, self).__init__()
 
         self.input_size = input_size
         self.hidden_size = hidden_size
@@ -262,7 +265,7 @@ class controller(nn.Module):
             self.init_parameters()
         elif self.ctrl_type == "ffnn":
             self.controller = nn.Linear(input_size, hidden_size)
-            nn.init.xavier_normal(self.controller.weight)
+            nn.init.xavier_normal_(self.controller.weight)
 
 
     def forward(self, x):
@@ -284,10 +287,10 @@ class controller(nn.Module):
     def init_parameters(self):
         for param in self.controller.parameters():
             if param.dim() == 1:
-                nn.init.constant(param, 0)
+                nn.init.constant_(param, 0)
             else:
                 stdev = 5 / (np.sqrt(self.input_size + self.hidden_size))
-                nn.init.uniform(param, -stdev, stdev)
+                nn.init.uniform_(param, -stdev, stdev)
 
 class Vanilla_LSTM(nn.Module):
     
@@ -318,14 +321,12 @@ class Vanilla_LSTM(nn.Module):
     
     def _init_hidden(self):
         
-        hidden_state = Variable(torch.randn(self.num_layers, self.batch_size, 
-                                            self.hidden_size) * 0.05)
-        cell_state = Variable(torch.randn(self.num_layers, self.batch_size, 
-                                          self.hidden_size) * 0.05)
-        
-        if use_cuda:
-            hidden_state = hidden_state.cuda()
-            cell_state = cell_state.cuda()
+        hidden_state = (torch.randn(self.num_layers, 
+                                   self.batch_size, 
+                                   self.hidden_size) * 0.05).to(device)
+        cell_state = (torch.randn(self.num_layers, 
+                                 self.batch_size, 
+                                 self.hidden_size) * 0.05).to(device)
             
         return (hidden_state, cell_state)
     
