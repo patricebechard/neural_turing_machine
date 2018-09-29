@@ -9,6 +9,6 @@ if __name__ == "__main__":
 
 	model = NTM('lstm').to(device)
 
-	loss = train(model, n_updates=30000, print_every=1000, save_model=True)
+	loss_tracker = train(model, n_updates=50000, print_every=1000, save_model=True)
 
 	np.savetxt('loss_ntm_lstm.csv', loss_tracker)
