@@ -2,10 +2,15 @@
 	"controller_type": "lstm",
 	"hidden_size": 100,
 	"num_layers": 1,
-	"num_memory_location": 128,
-	"memory_location_size": 20,
+	"num_memory_loc": 128,
+	"memory_loc_size": 20,
 	"shift_range": 1,
-	"learning_rate": 1e-4,
 	"batch_size": 64,
-	"max_sequence_length": 20
+	"num_updates": 50000,
+	"learning_rate": 1e-4,
+	"momentum": 0.9,
+	"max_sequence_length": 20,
+	"print_every": 10,
+	"show_plot": false,
+	"save_model": true
 }

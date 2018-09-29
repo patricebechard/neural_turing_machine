@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-def generate_input_example(sequence_length=None, batch_size=1):
+def generate_input_example(sequence_length=None, batch_size=1, max_sequence_length=20):
     
     #length of binary vectors fed to models
     vector_length = 8
@@ -15,7 +15,7 @@ def generate_input_example(sequence_length=None, batch_size=1):
     #length of sequence of binary vectors
     if sequence_length is None:
         # generate random sequence length between 1 and 20
-        sequence_length = np.random.randint(1, 21)            
+        sequence_length = np.random.randint(1, max_sequence_length + 1)            
         
     data = np.random.randint(2, size=(sequence_length, batch_size, vector_length+1))
 

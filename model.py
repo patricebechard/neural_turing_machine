@@ -6,29 +6,32 @@ import numpy as np
 from utils import device
 
 class NTM(nn.Module):
-    def __init__(self, ctrl_type, input_size=9, hidden_size=100, num_layers=1,
-                 n_mem_loc=128, mem_loc_len=20, shift_range=1, batch_size=1):
+    def __init__(self, controller_type, input_size=9, hidden_size=100, num_layers=1,
+                 num_memory_loc=128, memory_loc_size=20, shift_range=1, batch_size=1):
         super(NTM, self).__init__()
 
-        self.ctrl_type = ctrl_type
+        self.controller_type = controller_type
         self.input_size = input_size
         self.hidden_size = hidden_size
-        self.memory_size = (n_mem_loc, mem_loc_len)
+        self.memory_size = (num_memory_loc, memory_loc_size)
         self.shift_range = shift_range
         self.batch_size = batch_size
 
-        if ctrl_type not in ['lstm', 'ffnn']:
+        if controller_type not in ['lstm', 'ffnn']:
             raise Exception("Controller type '%s' not supported. "
-                            "Please choose between 'lstm' and 'ffnn'." % ctrl_type)
+                            "Please choose between 'lstm' and 'ffnn'." % controller_type)
 
         # creating controller, read head and write head
-        self.controller = Controller(ctrl_type, input_size + mem_loc_len, hidden_size, batch_size=batch_size)
-        self.write_head = Head(hidden_size, n_mem_loc, mem_loc_len, batch_size=batch_size)
-        self.read_head = Head(hidden_size, n_mem_loc, mem_loc_len, batch_size=batch_size)
+        self.controller = Controller(controller_type, input_size + memory_loc_size, 
+                                     hidden_size, batch_size=batch_size)
+        self.write_head = Head(hidden_size, num_memory_loc, 
+                               memory_loc_size, batch_size=batch_size)
+        self.read_head = Head(hidden_size, num_memory_loc, 
+                              memory_loc_size, batch_size=batch_size)
 
-        self.fc_erase = nn.Linear(hidden_size, mem_loc_len)
-        self.fc_add = nn.Linear(hidden_size, mem_loc_len)
-        self.fc_out = nn.Linear(mem_loc_len, input_size)
+        self.fc_erase = nn.Linear(hidden_size, memory_loc_size)
+        self.fc_add = nn.Linear(hidden_size, memory_loc_size)
+        self.fc_out = nn.Linear(memory_loc_size, input_size)
 
         self.memory0 = nn.Parameter(torch.randn(1, self.memory_size[0],
                                                 self.memory_size[1]) * 0.05)
@@ -64,7 +67,7 @@ class NTM(nn.Module):
         self.prev_write_weight, self.prev_read_weight = self._init_weight()
         self.read = self._init_read()
 
-        if self.ctrl_type == "lstm":
+        if self.controller_type == "lstm":
             self.controller.hidden = self.controller._init_hidden()
 
         #Take a slice of length batch_size x input (original size of input + M)
@@ -91,8 +94,8 @@ class NTM(nn.Module):
             self.prev_read_weight = self.read_weight
 
 
-            self.erase = F.sigmoid(self.fc_erase(ht))
-            self.add = F.sigmoid(self.fc_add(ht))
+            self.erase = torch.sigmoid(self.fc_erase(ht))
+            self.add = torch.sigmoid(self.fc_add(ht))
 
             self._write()
             self._read()
@@ -111,7 +114,7 @@ class NTM(nn.Module):
             out = self.fc_out(self.read).unsqueeze(0)
             
         #NV - Retrait du sigmoid pour stabilité et erreur NAN avec BCEWithLogitLoss
-        #    out = F.sigmoid(out)
+        #    out = torch.sigmoid(out)
 
             if self.ntm_out is None:
                 self.ntm_out = out
@@ -145,9 +148,7 @@ class NTM(nn.Module):
         return write_weight, read_weight
 
     def _init_read(self):
-        readvec = self.read0.clone().repeat(self.batch_size, 1).to(device)
-
-        return readvec
+        return self.read0.clone().repeat(self.batch_size, 1).to(device)
 
     def number_of_parameters(self):
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
@@ -205,7 +206,7 @@ class Head(nn.Module):
         self.prev_weight = prev_weight
         self.key = F.relu(self.fc_key(x))
         self.beta = F.softplus(self.fc_beta(x))
-        self.blending = F.sigmoid(self.fc_blending(x))
+        self.blending = torch.sigmoid(self.fc_blending(x))
         self.shift = F.softmax(self.fc_shift(x), 1)
         self.gamma = F.relu(self.fc_gamma(x)) + 1
 
@@ -243,33 +244,33 @@ class Head(nn.Module):
 #
 #################################################################################################################
 class Controller(nn.Module):
-    def __init__(self, ctrl_type, input_size, hidden_size, batch_size=1,
+    def __init__(self, controller_type, input_size, hidden_size, batch_size=1,
                  num_layers=1):
         super(Controller, self).__init__()
 
         self.input_size = input_size
         self.hidden_size = hidden_size
-        self.ctrl_type = ctrl_type
+        self.controller_type = controller_type
         self.batch_size = batch_size
         self.num_layers = num_layers
 
-        if self.ctrl_type == "lstm":
+        if self.controller_type == "lstm":
             self.controller = nn.LSTM(input_size, hidden_size, num_layers)
             self.hidden0 = nn.Parameter(torch.randn(num_layers, 1, hidden_size) * 0.05)
             self.cell0 = nn.Parameter(torch.randn(num_layers, 1, hidden_size) * 0.05)
             self.init_parameters()
-        elif self.ctrl_type == "ffnn":
+        elif self.controller_type == "ffnn":
             self.controller = nn.Linear(input_size, hidden_size)
             nn.init.xavier_normal_(self.controller.weight)
 
 
     def forward(self, x):
-        if self.ctrl_type == "lstm":
+        if self.controller_type == "lstm":
             x, self.hidden = self.controller(x.view(1, self.batch_size, -1), self.hidden)
             x = x.view(self.batch_size, -1)
-        elif self.ctrl_type == "ffnn":
+        elif self.controller_type == "ffnn":
             x = self.controller(x)
-        return F.tanh(x)
+        return torch.tanh(x)
 
     # Crucial for learning: the hidden and cell state of the LSTM at the start of each mini-batch must be learned
     def _init_hidden(self):
@@ -308,7 +309,7 @@ class Vanilla_LSTM(nn.Module):
         
         output, self.hidden = self.lstm(x.squeeze(), self.hidden0)
     #NV - out for BCEloss
-        #output = F.sigmoid(self.fc(output))
+        #output = torch.sigmoid(self.fc(output))
         output = self.fc(output)
         return output
         
