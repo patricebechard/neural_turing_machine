@@ -28,4 +28,4 @@ if __name__ == "__main__":
 						 show_plot=params['show_plot'],
 						 save_model=params['save_model'])
 
-	np.savetxt('loss_ntm_%s.csv' % (params['controller_type'], loss_tracker)
+	np.savetxt('loss_ntm_%s.csv' % (params['controller_type']), loss_tracker)
