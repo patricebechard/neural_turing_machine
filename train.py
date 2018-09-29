@@ -1,12 +1,10 @@
 import torch
 from torch import nn
 from torch import optim
+from utils import *
 
 def train(model, n_updates=100000, learning_rate=1e-4, print_every=100,
-          show_plot=False):
-    
-    if use_cuda:
-        model = model.cuda()
+          show_plot=False, save_model=False):
         
 # NV - Change BCELoss to BCEWithLogitsLoss for stability. (not computed for lstm_ntm)
     criterion = nn.BCEWithLogitsLoss() 
@@ -23,9 +21,9 @@ def train(model, n_updates=100000, learning_rate=1e-4, print_every=100,
         optimizer.zero_grad()
       
         inputs, targets = generate_input_example(batch_size=model.batch_size)
-        inputs, targets = Variable(inputs), Variable(targets)
-        if use_cuda:
-            inputs, targets = inputs.cuda(), targets.cuda()
+
+        inputs = inputs.to(device)
+        targets = targets.to(device)
                 
         outputs = model(inputs)
         
@@ -50,6 +48,9 @@ def train(model, n_updates=100000, learning_rate=1e-4, print_every=100,
             
             if show_plot:
                 show_last_example(inputs, outputs, targets)
+
+            if save_model:
+                torch.save(model.state_dict(), 'pretrained.pt')
 
             cost_per_seq = 0
     return loss_tracker

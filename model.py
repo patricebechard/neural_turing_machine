@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+import torch.nn.functional as F
 import numpy as np
 
 from utils import device
@@ -128,17 +129,13 @@ class NTM(nn.Module):
         self.memory = self.memory * (1 - erase_tensor) + add_tensor
 
     def _init_memory(self):
-        memory = self.memory0.clone().repeat(self.batch_size, 1, 1)
-        if use_cuda:
-            memory = memory.cuda()
+        memory = self.memory0.clone().repeat(self.batch_size, 1, 1).to(device)
+
         return memory
 
     def _init_weight(self):
-        read_weight = self.read_weight0.clone().repeat(self.batch_size, 1)
-        write_weight = self.write_weight0.clone().repeat(self.batch_size, 1)
-        if use_cuda:
-            read_weight, write_weight = read_weight.cuda(), write_weight.cuda()
-
+        read_weight = self.read_weight0.clone().repeat(self.batch_size, 1).to(device)
+        write_weight = self.write_weight0.clone().repeat(self.batch_size, 1).to(device)
 
         #print torch.sum(read_weight)
 
@@ -148,10 +145,8 @@ class NTM(nn.Module):
         return write_weight, read_weight
 
     def _init_read(self):
-        readvec = self.read0.clone().repeat(self.batch_size, 1)
+        readvec = self.read0.clone().repeat(self.batch_size, 1).to(device)
 
-        if use_cuda:
-            readvec = readvec.cuda()
         return readvec
 
     def number_of_parameters(self):
@@ -278,10 +273,9 @@ class Controller(nn.Module):
 
     # Crucial for learning: the hidden and cell state of the LSTM at the start of each mini-batch must be learned
     def _init_hidden(self):
-        hidden_state = self.hidden0.clone().repeat(1, self.batch_size, 1)
-        cell_state = self.cell0.clone().repeat(1, self.batch_size, 1)
-        if use_cuda:
-            hidden_state, cell_state = hidden_state.cuda(), cell_state.cuda()
+        hidden_state = self.hidden0.clone().repeat(1, self.batch_size, 1).to(device)
+        cell_state = self.cell0.clone().repeat(1, self.batch_size, 1).to(device)
+
         return hidden_state, cell_state
 
     def init_parameters(self):

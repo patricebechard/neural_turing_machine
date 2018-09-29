@@ -65,10 +65,11 @@ def show_last_example(inputs, outputs, targets):
 def visualise_read_write(model):
     plt.clf()
   
-    inputs, targets = generate_input_example(sequence_length=20, batch_size=1)
-    inputs, targets = Variable(inputs), Variable(targets)
-    if use_cuda:
-        inputs, targets = inputs.cuda(), targets.cuda()
+    inputs, targets = generate_input_example(sequence_length=20, batch_size=1)\
+
+    inputs = inputs.to(device)
+    targets = targets.to(device)
+
 
     outputs = model(inputs)
 # NV - Adjust because BCEWLL
