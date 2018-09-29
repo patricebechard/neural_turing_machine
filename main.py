@@ -21,7 +21,7 @@ if __name__ == "__main__":
 				batch_size=params['batch_size']).to(device)
 
 	loss_tracker = train(model, 
-						 num  _updates=params['num_updates'], 
+						 num_updates=params['num_updates'], 
 						 learning_rate=params['learning_rate'],
 						 momentum=params['momentum'],
 						 print_every=params['print_every'], 
