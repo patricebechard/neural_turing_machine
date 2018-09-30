@@ -306,8 +306,8 @@ class Vanilla_LSTM(nn.Module):
     def forward(self, x):#, hidden):
       
         hidden, cell = self._init_hidden()
-        
-        output, (hidden, cell) = self.lstm(x.squeeze(), (hidden, cell))
+
+        output, (hidden, cell) = self.lstm(x, (hidden, cell))
 
         output = self.fc(output)
         return output
