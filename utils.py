@@ -41,7 +41,7 @@ def generate_input_example(sequence_length=None, batch_size=1, max_sequence_leng
 def show_last_example(inputs, outputs, targets):
     
 # NV - Adjust because BCEWLL
-    outputs = F.sigmoid(outputs)
+    outputs = torch.sigmoid(outputs)
     
     inputs = inputs[:,0].data.cpu().numpy()
     outputs = outputs[:,0].data.cpu().numpy()
