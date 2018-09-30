@@ -33,25 +33,27 @@ class NTM(nn.Module):
         self.fc_add = nn.Linear(hidden_size, memory_loc_size)
         self.fc_out = nn.Linear(memory_loc_size, input_size)
 
-        self.memory0 = nn.Parameter(torch.randn(1, self.memory_size[0],
-                                                self.memory_size[1]) * 0.05)
-        self.write_weight0 = nn.Parameter(torch.randn(1, self.memory_size[0]) * 0.05)
-        self.read_weight0 = nn.Parameter(torch.randn(1, self.memory_size[0]) * 0.05)
-
-        self.read0 = nn.Parameter(torch.randn(1, self.memory_size[1]) * 0.05)
+        self.memory0 = nn.Parameter(torch.zeros(1, self.memory_size[0], self.memory_size[1]))
+        self.write_weight0 = nn.Parameter(torch.zeros(1, self.memory_size[0]))
+        self.read_weight0 = nn.Parameter(torch.zeros(1, self.memory_size[0]))
+        self.read0 = nn.Parameter(torch.zeros(1, self.memory_size[1]))
 
         self.init_parameters()
 
     def init_parameters(self):
         # Initialize the linear layers
-        nn.init.xavier_uniform_(self.fc_erase.weight)
+        nn.init.xavier_normal_(self.fc_erase.weight)
         nn.init.constant_(self.fc_erase.bias, 0)
 
-        nn.init.xavier_uniform_(self.fc_add.weight)
+        nn.init.xavier_normal_(self.fc_add.weight)
         nn.init.normal_(self.fc_add.bias, 0)
 
-        nn.init.xavier_uniform_(self.fc_out.weight)
+        nn.init.xavier_normal_(self.fc_out.weight)
         nn.init.constant_(self.fc_out.bias, 0)
+
+        nn.init.xavier_normal_(self.memory0)
+        nn.init.xavier_normal_(self.write_weight0)
+        nn.init.xavier_normal_(self.read_weight0)
 
     def forward(self, x):
 
@@ -93,7 +95,6 @@ class NTM(nn.Module):
             self.prev_write_weight = self.write_weight
             self.prev_read_weight = self.read_weight
 
-
             self.erase = torch.sigmoid(self.fc_erase(ht))
             self.add = torch.sigmoid(self.fc_add(ht))
 
@@ -112,9 +113,6 @@ class NTM(nn.Module):
                                                         self.add.unsqueeze(0).data))
 
             out = self.fc_out(self.read).unsqueeze(0)
-            
-        #NV - Retrait du sigmoid pour stabilité et erreur NAN avec BCEWithLogitLoss
-        #    out = torch.sigmoid(out)
 
             if self.ntm_out is None:
                 self.ntm_out = out
@@ -139,8 +137,6 @@ class NTM(nn.Module):
     def _init_weight(self):
         read_weight = self.read_weight0.clone().repeat(self.batch_size, 1).to(device)
         write_weight = self.write_weight0.clone().repeat(self.batch_size, 1).to(device)
-
-        #print torch.sum(read_weight)
 
         read_weight = F.softmax(read_weight, 1)
         write_weight = F.softmax(write_weight, 1)
@@ -189,13 +185,13 @@ class Head(nn.Module):
         nn.init.xavier_normal_(self.fc_key.weight)
         nn.init.constant_(self.fc_key.bias, 0)
 
-        nn.init.xavier_uniform_(self.fc_beta.weight)
+        nn.init.xavier_normal_(self.fc_beta.weight)
         nn.init.constant_(self.fc_beta.bias, 0)
 
-        nn.init.xavier_uniform_(self.fc_blending.weight)
+        nn.init.xavier_normal_(self.fc_blending.weight)
         nn.init.constant_(self.fc_blending.bias, 0)
 
-        nn.init.xavier_uniform_(self.fc_shift.weight)
+        nn.init.xavier_normal_(self.fc_shift.weight)
         nn.init.constant_(self.fc_shift.bias, 0)
 
         nn.init.xavier_normal_(self.fc_gamma.weight)
@@ -256,8 +252,9 @@ class Controller(nn.Module):
 
         if self.controller_type == "lstm":
             self.controller = nn.LSTM(input_size, hidden_size, num_layers)
-            self.hidden0 = nn.Parameter(torch.randn(num_layers, 1, hidden_size) * 0.05)
-            self.cell0 = nn.Parameter(torch.randn(num_layers, 1, hidden_size) * 0.05)
+            self.hidden0 = nn.Parameter(torch.zeros(num_layers, 1, hidden_size))
+            self.cell0 = nn.Parameter(torch.zeros(num_layers, 1, hidden_size))
+
             self.init_parameters()
         elif self.controller_type == "ffnn":
             self.controller = nn.Linear(input_size, hidden_size)
@@ -284,8 +281,7 @@ class Controller(nn.Module):
             if param.dim() == 1:
                 nn.init.constant_(param, 0)
             else:
-                stdev = 5 / (np.sqrt(self.input_size + self.hidden_size))
-                nn.init.uniform_(param, -stdev, stdev)
+                nn.init.xavier_normal_(param)
 
 class Vanilla_LSTM(nn.Module):
     
@@ -301,29 +297,24 @@ class Vanilla_LSTM(nn.Module):
         self.lstm = nn.LSTM(input_size=input_size, hidden_size=hidden_size, num_layers=num_layers)
         self.fc = nn.Linear(hidden_size, output_size)
         
-        self.hidden0 = self._init_hidden()
-        
+        self.hidden0 = nn.Parameter(torch.zeros(num_layers, 1, hidden_size))
+        self.cell0 = nn.Parameter(torch.zeros(num_layers, 1, hidden_size))
+
     def forward(self, x):#, hidden):
       
-       # self.hidden = hidden
+        hidden, cell = self._init_hidden()
         
-        output, self.hidden = self.lstm(x.squeeze(), self.hidden0)
-    #NV - out for BCEloss
-        #output = torch.sigmoid(self.fc(output))
+        output, (hidden, cell) = self.lstm(x.squeeze(), (hidden, cell))
+
         output = self.fc(output)
         return output
         
-    
     def _init_hidden(self):
-        
-        hidden_state = (torch.randn(self.num_layers, 
-                                   self.batch_size, 
-                                   self.hidden_size) * 0.05).to(device)
-        cell_state = (torch.randn(self.num_layers, 
-                                 self.batch_size, 
-                                 self.hidden_size) * 0.05).to(device)
-            
-        return (hidden_state, cell_state)
+
+        hidden = self.hidden0.clone().repeat(1, self.batch_size, 1).to(device)
+        cell = self.cell0.clone().repeat(1, self.batch_size, 1).to(device)
+    
+        return hidden, cell
     
     def number_of_parameters(self):
         return sum(p.numel() for p in self.parameters() if p.requires_grad)

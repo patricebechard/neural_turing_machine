@@ -6,11 +6,7 @@ from utils import *
 def train(model, num_updates=100000, learning_rate=1e-4, momentum=0.9,
           print_every=100, show_plot=False, save_model=False):
         
-# NV - Change BCELoss to BCEWithLogitsLoss for stability. (not computed for lstm_ntm)
     criterion = nn.BCEWithLogitsLoss() 
-#    criterion = nn.BCELoss()
-    # original paper uses RMSProp with momentum 0.9
-    # optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     optimizer = optim.RMSprop(model.parameters(), lr=learning_rate, momentum=momentum, alpha=0.95)
     
     loss_tracker = []
