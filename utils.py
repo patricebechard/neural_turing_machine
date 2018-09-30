@@ -73,7 +73,7 @@ def visualise_read_write(model):
 
     outputs = model(inputs)
 # NV - Adjust because BCEWLL
-    outputs = F.sigmoid(outputs)
+    outputs = torch.sigmoid(outputs)
     
     inputs = inputs.data.squeeze().numpy().T
     outputs = outputs.data.squeeze().numpy().T
