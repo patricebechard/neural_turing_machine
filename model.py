@@ -42,18 +42,18 @@ class NTM(nn.Module):
 
     def init_parameters(self):
         # Initialize the linear layers
-        nn.init.xavier_normal_(self.fc_erase.weight)
+        nn.init.xavier_uniform_(self.fc_erase.weight)
         nn.init.constant_(self.fc_erase.bias, 0)
 
-        nn.init.xavier_normal_(self.fc_add.weight)
+        nn.init.xavier_uniform_(self.fc_add.weight)
         nn.init.normal_(self.fc_add.bias, 0)
 
-        nn.init.xavier_normal_(self.fc_out.weight)
+        nn.init.xavier_uniform_(self.fc_out.weight)
         nn.init.constant_(self.fc_out.bias, 0)
 
-        nn.init.xavier_normal_(self.memory0)
-        nn.init.xavier_normal_(self.write_weight0)
-        nn.init.xavier_normal_(self.read_weight0)
+        nn.init.xavier_uniform_(self.memory0)
+        nn.init.xavier_uniform_(self.write_weight0)
+        nn.init.xavier_uniform_(self.read_weight0)
 
     def forward(self, x):
 
@@ -182,19 +182,19 @@ class Head(nn.Module):
 
     def init_parameters(self):
         # Initialize the linear layers
-        nn.init.xavier_normal_(self.fc_key.weight)
+        nn.init.xavier_uniform_(self.fc_key.weight)
         nn.init.constant_(self.fc_key.bias, 0)
 
-        nn.init.xavier_normal_(self.fc_beta.weight)
+        nn.init.xavier_uniform_(self.fc_beta.weight)
         nn.init.constant_(self.fc_beta.bias, 0)
 
-        nn.init.xavier_normal_(self.fc_blending.weight)
+        nn.init.xavier_uniform_(self.fc_blending.weight)
         nn.init.constant_(self.fc_blending.bias, 0)
 
-        nn.init.xavier_normal_(self.fc_shift.weight)
+        nn.init.xavier_uniform_(self.fc_shift.weight)
         nn.init.constant_(self.fc_shift.bias, 0)
 
-        nn.init.xavier_normal_(self.fc_gamma.weight)
+        nn.init.xavier_uniform_(self.fc_gamma.weight)
         nn.init.constant_(self.fc_gamma.bias, 0)
 
     def forward(self, x, memory, prev_weight):
@@ -258,7 +258,7 @@ class Controller(nn.Module):
             self.init_parameters()
         elif self.controller_type == "ffnn":
             self.controller = nn.Linear(input_size, hidden_size)
-            nn.init.xavier_normal_(self.controller.weight)
+            nn.init.xavier_uniform_(self.controller.weight)
 
 
     def forward(self, x):
@@ -281,7 +281,7 @@ class Controller(nn.Module):
             if param.dim() == 1:
                 nn.init.constant_(param, 0)
             else:
-                nn.init.xavier_normal_(param)
+                nn.init.xavier_uniform_(param)
 
 class Vanilla_LSTM(nn.Module):
     
@@ -299,6 +299,9 @@ class Vanilla_LSTM(nn.Module):
         
         self.hidden0 = nn.Parameter(torch.zeros(num_layers, 1, hidden_size))
         self.cell0 = nn.Parameter(torch.zeros(num_layers, 1, hidden_size))
+
+        nn.init.xavier_uniform_(self.hidden0)
+        nn.init.xavier_uniform_(self.cell0)
 
     def forward(self, x):#, hidden):
       
