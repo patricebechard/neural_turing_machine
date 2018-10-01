@@ -1,0 +1,12 @@
+{
+	"hidden_size": 256,
+	"num_layers": 3,
+	"batch_size": 1,
+	"num_updates": 50000,
+	"learning_rate": 3e-5,
+	"momentum": 0.9,
+	"max_sequence_length": 20,
+	"print_every": 1000,
+	"show_plot": false,
+	"save_model": true
+}
