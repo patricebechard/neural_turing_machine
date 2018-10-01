@@ -1,27 +1,26 @@
 import torch
 from torch import nn
 from torch import optim
-
 from utils import *
 
-def train(model, n_updates=100000, learning_rate=1e-4, print_every=100,
-          show_plot=False):
+def train(model, num_updates=100000, learning_rate=1e-4, momentum=0.9,
+          print_every=100, show_plot=False, save_model=False):
         
-# NV - Change BCELoss to BCEWithLogitsLoss for stability. (not computed for lstm_ntm)
-    criterion = nn.BCEWithLogitsLoss() 
-#    criterion = nn.BCELoss()
-    # original paper uses RMSProp with momentum 0.9
-    # optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-    optimizer = optim.RMSprop(model.parameters(), lr=learning_rate, momentum=0.9, alpha=0.95)
+    criterion = nn.BCEWithLogitsLoss()
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    # optimizer = optim.RMSprop(model.parameters(), lr=learning_rate, momentum=momentum, alpha=0.95)
     
     loss_tracker = []
     cost_per_seq = 0
     
-    for update in range(n_updates):
+    for update in range(num_updates):
       
         optimizer.zero_grad()
       
         inputs, targets = generate_input_example(batch_size=model.batch_size)
+
+        inputs = inputs.to(device)
+        targets = targets.to(device)
                 
         outputs = model(inputs)
         
@@ -29,12 +28,12 @@ def train(model, n_updates=100000, learning_rate=1e-4, print_every=100,
         #output_len = outputs.shape[0]//2
         
         loss = criterion(outputs, targets)
-        cost_per_seq += loss.data[0]
+        cost_per_seq += loss.item()
 
         loss.backward()
         parameters = list(filter(lambda p: p.grad is not None, model.parameters()))
         for p in parameters:
-            p.grad.data.clamp_(-10, 10)
+            p.grad.data.clamp_(-20, 20)
         optimizer.step()
 
         if update % print_every == 0:
@@ -46,6 +45,9 @@ def train(model, n_updates=100000, learning_rate=1e-4, print_every=100,
             
             if show_plot:
                 show_last_example(inputs, outputs, targets)
+
+            if save_model and update != 0:
+                torch.save(model.state_dict(), 'pretrained.pt')
 
             cost_per_seq = 0
     return loss_tracker

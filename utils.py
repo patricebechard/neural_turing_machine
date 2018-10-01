@@ -1,13 +1,11 @@
 import torch
-from torch import nn
-
 import numpy as np
-from matplotlib import gridspec
 import matplotlib.pyplot as plt
+from matplotlib import gridspec
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-def generate_input_example(sequence_length=None, batch_size=1, max_sequence_length=20):
+def generate_input_example(sequence_length=None, batch_size=1):
     
     #length of binary vectors fed to models
     vector_length = 8
@@ -15,7 +13,7 @@ def generate_input_example(sequence_length=None, batch_size=1, max_sequence_leng
     #length of sequence of binary vectors
     if sequence_length is None:
         # generate random sequence length between 1 and 20
-        sequence_length = np.random.randint(1, max_sequence_length + 1)            
+        sequence_length = np.random.randint(1, 21)            
         
     data = np.random.randint(2, size=(sequence_length, batch_size, vector_length+1))
 
@@ -33,8 +31,8 @@ def generate_input_example(sequence_length=None, batch_size=1, max_sequence_leng
     targets = np.concatenate((padding, delimiter, data)) 
     
     #convert to torch tensors
-    inputs = torch.from_numpy(inputs).float()
-    targets = torch.from_numpy(targets).float()
+    inputs = torch.from_numpy(inputs).float().to(device)
+    targets = torch.from_numpy(targets).float().to(device)
 
     return inputs, targets
 
@@ -62,25 +60,35 @@ def show_last_example(inputs, outputs, targets):
     plt.show()
     plt.clf()
 
+    
+def plot_training_curves(rng, lstm_ntm_loss, ffnn_ntm_loss, lstm_loss):
+
+    plt.figure(figsize=(12, 8))
+    plt.plot(rng, lstm_loss, 'b', label="LSTM")
+    plt.plot(rng, lstm_ntm_loss, 'g', label="NTM with LSTM Controller")
+    plt.plot(rng, ffnn_ntm_loss, 'r', label="NTM with FeedForward Controller")
+    
+    plt.xlabel("Number of sequences")
+    plt.ylabel("BCE Loss")
+  #  plt.axis([0, len(rng)*10, 0, 0.05])
+    plt.legend(fancybox=True)
+    plt.show()
+    
 def visualise_read_write(model):
     plt.clf()
   
-    inputs, targets = generate_input_example(sequence_length=20, batch_size=1)\
-
-    inputs = inputs.to(device)
-    targets = targets.to(device)
-
+    inputs, targets = generate_input_example(sequence_length=20, batch_size=1)
 
     outputs = model(inputs)
 # NV - Adjust because BCEWLL
     outputs = torch.sigmoid(outputs)
     
-    inputs = inputs.data.squeeze().numpy().T
-    outputs = outputs.data.squeeze().numpy().T
-    read_vecs = model.kept_read_vectors.squeeze().numpy().T
-    add_vecs = model.kept_write_vectors.squeeze().numpy().T
-    read_weights = model.kept_read_weights.squeeze().numpy().T
-    write_weights = model.kept_write_weights.squeeze().numpy().T
+    inputs = inputs.data.squeeze().cpu().numpy().T
+    outputs = outputs.data.squeeze().cpu().numpy().T
+    read_vecs = model.kept_read_vectors.squeeze().cpu().numpy().T
+    add_vecs = model.kept_write_vectors.squeeze().cpu().numpy().T
+    read_weights = model.kept_read_weights.squeeze().cpu().numpy().T
+    write_weights = model.kept_write_weights.squeeze().cpu().numpy().T
     
     n_shown_mem_loc = 40
 
@@ -116,4 +124,75 @@ def visualise_read_write(model):
     ax5.axis('off')
 
     plt.savefig('read_write_memory.png')
+    plt.show()
+    
+def show_generalization(model):
+    
+    # showing models results on inputs of size 10, 20, 30, 50, 120
+    
+    sequence_lengths = [10, 20, 30, 50, 120]
+    
+    inputs = []
+    outputs = []
+    
+    for i, seq_len in enumerate(sequence_lengths):
+        
+        input, _ = generate_input_example(sequence_length=seq_len)
+        inputs.append(input[:seq_len])
+        
+        output = torch.sigmoid(model(input.to(device)).to('cpu')[seq_len+1:])
+        outputs.append(output)
+
+
+    # creating plot similar to figure 4 from Graves et. al. 2014
+    
+    fig = plt.figure(figsize=(20, 4))
+    
+    gs1 = gridspec.GridSpec(4, 11)
+    gs1.update(left=0.05, right=0.48, wspace=0.33)
+
+    # targets for 10, 20, 30, 50
+    ax1 = plt.subplot(gs1[0, 0:1])
+    ax1.matshow(inputs[0].data.squeeze().cpu().numpy().T)
+    ax1.axis('off')
+    ax2 = plt.subplot(gs1[0, 1:3])
+    ax2.matshow(inputs[1].data.squeeze().cpu().numpy().T)
+    ax2.axis('off')
+    ax3 = plt.subplot(gs1[0, 3:6])
+    ax3.matshow(inputs[2].data.squeeze().cpu().numpy().T)
+    ax3.axis('off')
+    ax4 = plt.subplot(gs1[0, 6:11])
+    ax4.matshow(inputs[3].data.squeeze().cpu().numpy().T)
+    ax4.axis('off')
+    
+    # outputs for 10, 20, 30, 50
+    ax5 = plt.subplot(gs1[1, 0:1])
+    ax5.matshow(outputs[0].data.squeeze().cpu().numpy().T)
+    ax5.axis('off')
+    ax6 = plt.subplot(gs1[1, 1:3])
+    ax6.matshow(outputs[1].data.squeeze().cpu().numpy().T)
+    ax6.axis('off')
+    ax7 = plt.subplot(gs1[1, 3:6])
+    ax7.matshow(outputs[2].data.squeeze().cpu().numpy().T)
+    ax7.axis('off')
+    ax8 = plt.subplot(gs1[1, 6:11])
+    ax8.matshow(outputs[3].data.squeeze().cpu().numpy().T)
+    ax8.axis('off')
+    
+    # targets and outputs for 120
+    ax9 = plt.subplot(gs1[2, 0:11])
+    ax9.matshow(inputs[4].data.squeeze().cpu().numpy().T)
+    ax9.axis('off')
+    ax10 = plt.subplot(gs1[3, 0:11])
+    ax10.matshow(outputs[4].data.squeeze().cpu().numpy().T)
+    ax10.axis('off')
+    
+    
+    ax1.text(-15, 4.5, 'Targets', size=14)
+    ax5.text(-15, 4.5, 'Outputs', size=14)
+    ax9.text(-13, 4.5, 'Targets', size=14)
+    ax10.text(-13, 4.5, 'Outputs', size=14)
+    ax10.text(0, 12, r'Time $\longrightarrow$', size=14)
+
+
     plt.show()

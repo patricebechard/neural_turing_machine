@@ -6,39 +6,41 @@ import numpy as np
 from utils import device
 
 class NTM(nn.Module):
-    def __init__(self, ctrl_type, input_size=9, hidden_size=100, num_layers=1,
-                 n_mem_loc=128, mem_loc_len=20, shift_range=1, batch_size=1):
+    def __init__(self, controller_type, input_size=9, hidden_size=100, num_layers=1,
+                 num_memory_loc=128, memory_loc_size=20, shift_range=1, batch_size=1):
         super(NTM, self).__init__()
 
-        self.ctrl_type = ctrl_type
+        self.controller_type = controller_type
         self.input_size = input_size
         self.hidden_size = hidden_size
-        self.memory_size = (n_mem_loc, mem_loc_len)
+        self.memory_size = (num_memory_loc, memory_loc_size)
         self.shift_range = shift_range
         self.batch_size = batch_size
 
-        if ctrl_type not in ['lstm', 'ffnn']:
+        if controller_type not in ['lstm', 'ffnn']:
             raise Exception("Controller type '%s' not supported. "
-                            "Please choose between 'lstm' and 'ffnn'." % ctrl_type)
+                            "Please choose between 'lstm' and 'ffnn'." % controller_type)
 
         # creating controller, read head and write head
-        self.controller = Controller(ctrl_type, input_size + mem_loc_len, hidden_size, batch_size=batch_size)
-        self.write_head = Head(hidden_size, n_mem_loc, mem_loc_len, batch_size=batch_size)
-        self.read_head = Head(hidden_size, n_mem_loc, mem_loc_len, batch_size=batch_size)
+        self.controller = Controller(controller_type, input_size + memory_loc_size, 
+                                     hidden_size, batch_size=batch_size)
+        self.write_head = Head(hidden_size, num_memory_loc, 
+                               memory_loc_size, batch_size=batch_size)
+        self.read_head = Head(hidden_size, num_memory_loc, 
+                              memory_loc_size, batch_size=batch_size)
 
-        self.fc_erase = nn.Linear(hidden_size, mem_loc_len)
-        self.fc_add = nn.Linear(hidden_size, mem_loc_len)
-        self.fc_out = nn.Linear(mem_loc_len, input_size)
+        self.fc_erase = nn.Linear(hidden_size, memory_loc_size)
+        self.fc_add = nn.Linear(hidden_size, memory_loc_size)
+        self.fc_out = nn.Linear(memory_loc_size, input_size)
 
-        self.memory0 = nn.Parameter(torch.randn(1, self.memory_size[0],
-                                                self.memory_size[1]) * 0.05)
-        self.write_weight0 = nn.Parameter(torch.randn(1, self.memory_size[0]) * 0.05)
-        self.read_weight0 = nn.Parameter(torch.randn(1, self.memory_size[0]) * 0.05)
-
-        self.read0 = nn.Parameter(torch.randn(1, self.memory_size[1]) * 0.05)
+        self.memory0 = nn.Parameter(torch.zeros(1, self.memory_size[0], self.memory_size[1]))
+        # self.memory0 = torch.ones(self.batch_size, self.memory_size[0], self.memory_size[1]).to(device) * 1e-6
+        self.write_weight0 = nn.Parameter(torch.zeros(1, self.memory_size[0]))
+        self.read_weight0 = nn.Parameter(torch.zeros(1, self.memory_size[0]))
+        self.read0 = nn.Parameter(torch.zeros(1, self.memory_size[1]))
 
         self.init_parameters()
-
+        
     def init_parameters(self):
         # Initialize the linear layers
         nn.init.xavier_uniform_(self.fc_erase.weight)
@@ -49,6 +51,12 @@ class NTM(nn.Module):
 
         nn.init.xavier_uniform_(self.fc_out.weight)
         nn.init.constant_(self.fc_out.bias, 0)
+
+        # nn.init.constant_(self.memory0, 1e-6)
+        nn.init.xavier_uniform_(self.memory0)
+        nn.init.xavier_uniform_(self.write_weight0)
+        nn.init.xavier_uniform_(self.read_weight0)
+        nn.init.xavier_uniform_(self.read0)
 
     def forward(self, x):
 
@@ -61,10 +69,11 @@ class NTM(nn.Module):
         self.kept_write_weights = None
 
         self.memory = self._init_memory()
+        # self.memory = self.memory0
         self.prev_write_weight, self.prev_read_weight = self._init_weight()
         self.read = self._init_read()
 
-        if self.ctrl_type == "lstm":
+        if self.controller_type == "lstm":
             self.controller.hidden = self.controller._init_hidden()
 
         #Take a slice of length batch_size x input (original size of input + M)
@@ -90,7 +99,6 @@ class NTM(nn.Module):
             self.prev_write_weight = self.write_weight
             self.prev_read_weight = self.read_weight
 
-
             self.erase = torch.sigmoid(self.fc_erase(ht))
             self.add = torch.sigmoid(self.fc_add(ht))
 
@@ -109,9 +117,6 @@ class NTM(nn.Module):
                                                         self.add.unsqueeze(0).data))
 
             out = self.fc_out(self.read).unsqueeze(0)
-            
-        #NV - Retrait du sigmoid pour stabilité et erreur NAN avec BCEWithLogitLoss
-        #    out = torch.sigmoid(out)
 
             if self.ntm_out is None:
                 self.ntm_out = out
@@ -129,8 +134,7 @@ class NTM(nn.Module):
         self.memory = self.memory * (1 - erase_tensor) + add_tensor
 
     def _init_memory(self):
-        memory = self.memory0.clone().repeat(self.batch_size, 1, 1).to(device)
-        return memory
+        return self.memory0.clone().repeat(self.batch_size, 1, 1).to(device)
 
     def _init_weight(self):
         read_weight = self.read_weight0.clone().repeat(self.batch_size, 1).to(device)
@@ -142,13 +146,24 @@ class NTM(nn.Module):
         return write_weight, read_weight
 
     def _init_read(self):
-        readvec = self.read0.clone().repeat(self.batch_size, 1).to(device)
-
-        return readvec
+        return self.read0.clone().repeat(self.batch_size, 1).to(device)
 
     def number_of_parameters(self):
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
-    
+
+##################################################################################################
+#
+# Each head has 5 linear layers:
+#   For the key parameter
+#   For the beta parameter
+#   For the blending parameter
+#   For the shift parameter
+#   For the gamma parameter
+# It also has a refernce to the memory and the previous weight since it needs them to
+# calculate the addressing
+# The output of its forward() method is a normalized new weight
+#
+##################################################################################################
 class Head(nn.Module):
     def __init__(self, hidden_size, weight_size, key_size, shift_range=1, batch_size=1):
         super(Head, self).__init__()
@@ -169,7 +184,7 @@ class Head(nn.Module):
 
     def init_parameters(self):
         # Initialize the linear layers
-        nn.init.xavier_normal_(self.fc_key.weight)
+        nn.init.xavier_uniform_(self.fc_key.weight)
         nn.init.constant_(self.fc_key.bias, 0)
 
         nn.init.xavier_uniform_(self.fc_beta.weight)
@@ -181,17 +196,17 @@ class Head(nn.Module):
         nn.init.xavier_uniform_(self.fc_shift.weight)
         nn.init.constant_(self.fc_shift.bias, 0)
 
-        nn.init.xavier_normal_(self.fc_gamma.weight)
+        nn.init.xavier_uniform_(self.fc_gamma.weight)
         nn.init.constant_(self.fc_gamma.bias, 0)
 
     def forward(self, x, memory, prev_weight):
         self.memory = memory
         self.prev_weight = prev_weight
-        self.key = F.relu(self.fc_key(x))
+        self.key = torch.tanh(self.fc_key(x))
         self.beta = F.softplus(self.fc_beta(x))
         self.blending = torch.sigmoid(self.fc_blending(x))
         self.shift = F.softmax(self.fc_shift(x), 1)
-        self.gamma = F.relu(self.fc_gamma(x)) + 1
+        self.gamma = F.softplus(self.fc_gamma(x)) + 1
 
         self._addressing()
 
@@ -220,32 +235,39 @@ class Head(nn.Module):
     def _sharpening(self):
         self.weight = self.weight ** self.gamma
         self.weight = torch.div(self.weight, torch.sum(self.weight, dim=1).unsqueeze(1))
-        
+
+#################################################################################################################
+#
+# The controller uses an LSTM or an MLP
+#
+#################################################################################################################
 class Controller(nn.Module):
-    def __init__(self, ctrl_type, input_size, hidden_size, batch_size=1,
+    def __init__(self, controller_type, input_size, hidden_size, batch_size=1,
                  num_layers=1):
         super(Controller, self).__init__()
 
         self.input_size = input_size
         self.hidden_size = hidden_size
-        self.ctrl_type = ctrl_type
+        self.controller_type = controller_type
         self.batch_size = batch_size
         self.num_layers = num_layers
 
-        if self.ctrl_type == "lstm":
+        if self.controller_type == "lstm":
             self.controller = nn.LSTM(input_size, hidden_size, num_layers)
-            self.hidden0 = nn.Parameter(torch.randn(num_layers, 1, hidden_size) * 0.05)
-            self.cell0 = nn.Parameter(torch.randn(num_layers, 1, hidden_size) * 0.05)
+            self.hidden0 = nn.Parameter(torch.zeros(num_layers, 1, hidden_size))
+            self.cell0 = nn.Parameter(torch.zeros(num_layers, 1, hidden_size))
+
             self.init_parameters()
-        elif self.ctrl_type == "ffnn":
+        elif self.controller_type == "ffnn":
             self.controller = nn.Linear(input_size, hidden_size)
-            nn.init.xavier_normal_(self.controller.weight)
+            nn.init.xavier_uniform_(self.controller.weight)
+
 
     def forward(self, x):
-        if self.ctrl_type == "lstm":
+        if self.controller_type == "lstm":
             x, self.hidden = self.controller(x.view(1, self.batch_size, -1), self.hidden)
             x = x.view(self.batch_size, -1)
-        elif self.ctrl_type == "ffnn":
+        elif self.controller_type == "ffnn":
             x = self.controller(x)
         return torch.tanh(x)
 
@@ -261,9 +283,8 @@ class Controller(nn.Module):
             if param.dim() == 1:
                 nn.init.constant_(param, 0)
             else:
-                stdev = 5 / (np.sqrt(self.input_size + self.hidden_size))
-                nn.init.uniform_(param, -stdev, stdev)
-                
+                nn.init.xavier_uniform_(param)
+
 class Vanilla_LSTM(nn.Module):
     
     def __init__(self, input_size=9, hidden_size=100, output_size=9, num_layers=1, batch_size=1):
@@ -278,27 +299,27 @@ class Vanilla_LSTM(nn.Module):
         self.lstm = nn.LSTM(input_size=input_size, hidden_size=hidden_size, num_layers=num_layers)
         self.fc = nn.Linear(hidden_size, output_size)
         
-        self.hidden0 = self._init_hidden()
-        
+        self.hidden0 = nn.Parameter(torch.zeros(num_layers, 1, hidden_size))
+        self.cell0 = nn.Parameter(torch.zeros(num_layers, 1, hidden_size))
+
+        nn.init.xavier_uniform_(self.hidden0)
+        nn.init.xavier_uniform_(self.cell0)
+
     def forward(self, x):#, hidden):
       
-       # self.hidden = hidden
-        
-        output, self.hidden = self.lstm(x, self.hidden0)
-    #NV - out for BCEloss
-        #output = torch.sigmoid(self.fc(output))
+        hidden, cell = self._init_hidden()
+
+        output, (hidden, cell) = self.lstm(x, (hidden, cell))
+
         output = self.fc(output)
         return output
         
-    
     def _init_hidden(self):
-        
-        hidden_state = torch.randn(self.num_layers, self.batch_size, 
-                                   self.hidden_size).to(device) * 0.05
-        cell_state = torch.randn(self.num_layers, self.batch_size, 
-                                 self.hidden_size).to(device) * 0.05
-            
-        return (hidden_state, cell_state)
+
+        hidden = self.hidden0.clone().repeat(1, self.batch_size, 1).to(device)
+        cell = self.cell0.clone().repeat(1, self.batch_size, 1).to(device)
+    
+        return hidden, cell
     
     def number_of_parameters(self):
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
